@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description"
+        content="Visualizador interactivo de una pila LIFO con soporte para texto e imágenes de cámara.">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Visualizador de pila</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-body-tertiary">
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">Visualizador de pila</span>
+            <span class="navbar-text text-white d-none d-sm-inline">Estructura LIFO · Texto e imágenes</span>
+        </div>
+    </nav>
+
+    <main class="container py-4 py-lg-5">
+        <div class="row g-4">
+            <!-- Columna de controles -->
+            <section class="col-12 col-lg-5" aria-labelledby="controls-title">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <h1 id="controls-title" class="h3">Control de la pila</h1>
+                        <p class="text-secondary">Agrega texto o fotos desde tu cámara. El último elemento queda en la
+                            cima (LIFO).</p>
+
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"
+                                aria-label="Cerrar"></button>
+                        </div>
+                        {% endfor %}
+                        {% endwith %}
+
+                        <!-- Mensajes dinámicos (errores de cámara / subida) -->
+                        <div id="alert-area" aria-live="polite"></div>
+
+                        <!-- Formulario de texto -->
+                        <form action="{{ url_for('push') }}" method="post" class="mb-4" id="push-form" novalidate>
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <label for="value" class="form-label fw-semibold">Nuevo elemento (texto)</label>
+                            <div class="input-group">
+                                <input class="form-control" id="value" name="value" type="text"
+                                    maxlength="{{ max_text_length }}" placeholder="Ej. Libro, 25, Nodo A"
+                                    aria-describedby="value-help" autocomplete="off">
+                                <button class="btn btn-primary" type="submit">
+                                    <span aria-hidden="true">＋</span> Apilar texto
+                                </button>
+                            </div>
+                            <div id="value-help" class="form-text">Máximo {{ max_text_length }} caracteres.</div>
+                        </form>
+
+                        <!-- Sección de cámara -->
+                        <div class="border rounded-3 p-3 mb-3 bg-body">
+                            <h2 class="h5 mb-2">📷 Capturar foto</h2>
+                            <p class="small text-secondary mb-3">
+                                Activa la cámara, toma una foto y añádela a la pila.
+                            </p>
+
+                            <div class="d-grid gap-2 mb-3">
+                                <button type="button" class="btn btn-outline-primary" id="btn-start-camera">
+                                    Activar cámara
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary d-none" id="btn-stop-camera">
+                                    Detener cámara
+                                </button>
+                            </div>
+
+                            <div id="camera-container" class="d-none">
+                                <div class="ratio ratio-4x3 mb-3 bg-dark rounded overflow-hidden">
+                                    <video id="video" autoplay playsinline muted
+                                        class="w-100 h-100 object-fit-cover"></video>
+                                </div>
+                                <div class="d-grid mb-3">
+                                    <button type="button" class="btn btn-success" id="btn-capture">
+                                        📸 Tomar foto
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="preview-container" class="d-none">
+                                <p class="fw-semibold mb-2">Vista previa:</p>
+                                <div class="ratio ratio-4x3 mb-3 bg-dark rounded overflow-hidden">
+                                    <img id="photo-preview" alt="Foto capturada" class="w-100 h-100 object-fit-cover">
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-primary" id="btn-add-photo">
+                                        <span class="spinner-border spinner-border-sm d-none" id="photo-spinner"
+                                            aria-hidden="true"></span>
+                                        <span id="btn-add-photo-label">＋ Añadir foto a la pila</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" id="btn-retake">
+                                        Volver a tomar
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="camera-status" class="small text-secondary mt-2" role="status"
+                                aria-live="polite"></div>
+                        </div>
+
+                        <!-- Botones de operaciones -->
+                        <div class="d-grid gap-2">
+                            <form action="{{ url_for('pop') }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button class="btn btn-outline-danger w-100" type="submit" {% if not stack
+                                    %}disabled{% endif %}>
+                                    Retirar cima (Pop)
+                                </button>
+                            </form>
+                            <form action="{{ url_for('peek') }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button class="btn btn-outline-primary w-100" type="submit" {% if not stack
+                                    %}disabled{% endif %}>
+                                    Consultar cima (Peek)
+                                </button>
+                            </form>
+                            <form action="{{ url_for('clear') }}" method="post" id="clear-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button class="btn btn-outline-secondary w-100" type="submit" {% if not stack
+                                    %}disabled{% endif %}>
+                                    Vaciar pila
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm mt-4">
+                    <div class="card-body p-4">
+                        <h2 class="h5">¿Cómo funciona?</h2>
+                        <ul class="mb-0">
+                            <li><strong>Apilar (Push):</strong> agrega texto o una foto en la cima.</li>
+                            <li><strong>Retirar (Pop):</strong> elimina el elemento de la cima.</li>
+                            <li><strong>Consultar (Peek):</strong> muestra la cima sin eliminarla.</li>
+                            <li><strong>LIFO:</strong> el último en entrar es el primero en salir.</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Columna de visualización -->
+            <section class="col-12 col-lg-7" aria-labelledby="stack-title">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body p-4">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                            <div>
+                                <h2 id="stack-title" class="h3 mb-1">Representación visual</h2>
+                                <p class="text-secondary mb-0">La cima está arriba.</p>
+                            </div>
+                            <span class="badge text-bg-primary fs-6">
+                                {{ stack_size }}/{{ max_stack_size }} elemento{% if stack_size != 1 %}s{% endif %}
+                            </span>
+                        </div>
+
+                        <div class="progress mb-3" role="progressbar" aria-label="Capacidad de la pila"
+                            aria-valuenow="{{ stack_size }}" aria-valuemin="0" aria-valuemax="{{ max_stack_size }}">
+                            <div class="progress-bar" id="stack-progress"
+                                data-percent="{{ (stack_size / max_stack_size * 100)|round|int }}"></div>
+                        </div>
+
+                        <div class="alert alert-light border text-center mb-3" role="status">
+                            {% if stack %}⬆ CIMA DE LA PILA ⬆{% else %}La pila está vacía{% endif %}
+                        </div>
+
+                        {% if stack %}
+                        <ol class="list-group list-group-numbered mb-3"
+                            aria-label="Elementos de la pila, desde la cima hasta la base">
+                            {% for item in stack|reverse %}
+                            <li class="list-group-item{% if loop.first %} list-group-item-success{% endif %}">
+                                <div class="d-flex align-items-center justify-content-between gap-3">
+                                    <div class="flex-grow-1 text-break ms-2">
+                                        {% if item.k == 'i' %}
+                                        <img src="{{ url_for('serve_image', image_id=item.v) }}" alt="Foto en la pila"
+                                            width="160" height="120" loading="lazy"
+                                            class="img-fluid rounded border object-fit-cover">
+                                        {% else %}
+                                        <span>{{ item.v }}</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="flex-shrink-0">
+                                        {% if loop.first %}
+                                        <span class="badge text-bg-success">Cima</span>
+                                        {% elif loop.last %}
+                                        <span class="badge text-bg-secondary">Base</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </li>
+                            {% endfor %}
+                        </ol>
+                        <p class="small text-secondary mb-0">
+                            La visualización se muestra desde la cima hasta la base.
+                        </p>
+                        {% else %}
+                        <div class="border rounded-3 p-5 text-center bg-body">
+                            <div class="display-4 mb-2" aria-hidden="true">▤</div>
+                            <h3 class="h5">Todavía no hay elementos</h3>
+                            <p class="text-secondary mb-0">Escribe un valor o activa la cámara y pulsa
+                                <strong>Apilar</strong> para comenzar.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <footer class="text-center text-secondary small mt-4">
+            Proyecto educativo · Flask + Bootstrap.
+            <br>Las fotos se guardan temporalmente en el servidor, solo son visibles en tu sesión y se eliminan al
+            retirarlas o vaciar la pila.
+        </footer>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        (function () {
+            "use strict";
+
+            var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+            var PHOTO_URL = "{{ url_for('push_photo') }}";
+
+            var valueInput = document.getElementById("value");
+            var pushForm = document.getElementById("push-form");
+            var clearForm = document.getElementById("clear-form");
+
+            var btnStartCamera = document.getElementById("btn-start-camera");
+            var btnStopCamera = document.getElementById("btn-stop-camera");
+            var btnCapture = document.getElementById("btn-capture");
+            var btnRetake = document.getElementById("btn-retake");
+            var btnAddPhoto = document.getElementById("btn-add-photo");
+            var btnAddPhotoLabel = document.getElementById("btn-add-photo-label");
+            var photoSpinner = document.getElementById("photo-spinner");
+
+            var cameraContainer = document.getElementById("camera-container");
+            var previewContainer = document.getElementById("preview-container");
+            var video = document.getElementById("video");
+            var photoPreview = document.getElementById("photo-preview");
+            var cameraStatus = document.getElementById("camera-status");
+            var alertArea = document.getElementById("alert-area");
+
+            var mediaStream = null;
+            var photoDataUrl = "";
+
+            var progressBar = document.getElementById("stack-progress");
+            if (progressBar) {
+                progressBar.style.width = progressBar.dataset.percent + "%";
+            }
+
+            if (valueInput) {
+                valueInput.focus();
+            }
+
+            // Evita enviar texto vacío y bloquea el botón durante el envío (evita dobles clics)
+            if (pushForm) {
+                pushForm.addEventListener("submit", function (event) {
+                    if (!valueInput.value.trim()) {
+                        event.preventDefault();
+                        valueInput.value = "";
+                        valueInput.classList.add("is-invalid");
+                        valueInput.focus();
+                        return;
+                    }
+                    pushForm.querySelector("button[type=submit]").disabled = true;
+                });
+                valueInput.addEventListener("input", function () {
+                    valueInput.classList.remove("is-invalid");
+                });
+            }
+
+            if (clearForm) {
+                clearForm.addEventListener("submit", function (event) {
+                    if (!window.confirm("¿Seguro que deseas vaciar toda la pila?")) {
+                        event.preventDefault();
+                    }
+                });
+            }
+
+            function setStatus(message, isError) {
+                cameraStatus.textContent = message || "";
+                cameraStatus.classList.toggle("text-danger", !!isError);
+                cameraStatus.classList.toggle("text-secondary", !isError);
+            }
+
+            function showAlert(message, type) {
+                var div = document.createElement("div");
+                div.className = "alert alert-" + type + " alert-dismissible fade show";
+                div.setAttribute("role", "alert");
+                div.textContent = message;
+                var close = document.createElement("button");
+                close.type = "button";
+                close.className = "btn-close";
+                close.setAttribute("data-bs-dismiss", "alert");
+                close.setAttribute("aria-label", "Cerrar");
+                div.appendChild(close);
+                alertArea.replaceChildren(div);
+            }
+
+            function setUploading(isUploading) {
+                btnAddPhoto.disabled = isUploading;
+                btnRetake.disabled = isUploading;
+                photoSpinner.classList.toggle("d-none", !isUploading);
+                btnAddPhotoLabel.textContent = isUploading ? " Añadiendo..." : "＋ Añadir foto a la pila";
+            }
+
+            function stopCamera() {
+                if (mediaStream) {
+                    mediaStream.getTracks().forEach(function (track) { track.stop(); });
+                    mediaStream = null;
+                }
+                video.srcObject = null;
+                cameraContainer.classList.add("d-none");
+                btnStartCamera.classList.remove("d-none");
+                btnStopCamera.classList.add("d-none");
+            }
+
+            async function startCamera() {
+                setStatus("Solicitando acceso a la cámara...");
+                btnStartCamera.disabled = true;
+                try {
+                    mediaStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: 640 }, height: { ideal: 480 } },
+                        audio: false
+                    });
+                    video.srcObject = mediaStream;
+                    cameraContainer.classList.remove("d-none");
+                    previewContainer.classList.add("d-none");
+                    btnStartCamera.classList.add("d-none");
+                    btnStopCamera.classList.remove("d-none");
+                    setStatus("Cámara activa. Encuadra y pulsa «Tomar foto».");
+                } catch (err) {
+                    console.error(err);
+                    var msg = "No se pudo acceder a la cámara.";
+                    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+                        msg = "Permiso denegado. Permite el acceso a la cámara en la configuración del navegador.";
+                    } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+                        msg = "No se encontró ninguna cámara en este dispositivo.";
+                    } else if (err.name === "NotReadableError") {
+                        msg = "La cámara está siendo usada por otra aplicación.";
+                    }
+                    setStatus(msg, true);
+                } finally {
+                    btnStartCamera.disabled = false;
+                }
+            }
+
+            function capturePhoto() {
+                if (!mediaStream || !video.videoWidth) {
+                    setStatus("Espera a que la cámara esté lista.", true);
+                    return;
+                }
+
+                var canvas = document.createElement("canvas");
+                var maxWidth = 480;
+                var scale = Math.min(1, maxWidth / video.videoWidth);
+                canvas.width = Math.round(video.videoWidth * scale);
+                canvas.height = Math.round(video.videoHeight * scale);
+                // Sin espejo: la foto coincide con lo que se ve en el video.
+                canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                photoDataUrl = canvas.toDataURL("image/jpeg", 0.7);
+                photoPreview.src = photoDataUrl;
+
+                cameraContainer.classList.add("d-none");
+                previewContainer.classList.remove("d-none");
+                setStatus("Foto lista. Puedes añadirla a la pila o volver a tomar.");
+            }
+
+            function retake() {
+                photoDataUrl = "";
+                photoPreview.removeAttribute("src");
+                previewContainer.classList.add("d-none");
+                if (mediaStream) {
+                    cameraContainer.classList.remove("d-none");
+                    setStatus("Cámara activa. Encuadra y pulsa «Tomar foto».");
+                } else {
+                    btnStartCamera.classList.remove("d-none");
+                    btnStopCamera.classList.add("d-none");
+                    setStatus("");
+                }
+            }
+
+            async function addPhoto() {
+                if (!photoDataUrl) {
+                    setStatus("Primero toma una foto.", true);
+                    return;
+                }
+                setUploading(true);
+                try {
+                    var body = new URLSearchParams();
+                    body.set("photo", photoDataUrl);
+                    var response = await fetch(PHOTO_URL, {
+                        method: "POST",
+                        headers: { "X-CSRF-Token": csrfToken, "Accept": "application/json" },
+                        body: body,
+                        credentials: "same-origin"
+                    });
+                    var data = await response.json().catch(function () { return {}; });
+                    if (!response.ok || !data.ok) {
+                        showAlert(data.message || "No se pudo añadir la foto.", "danger");
+                        setUploading(false);
+                        return;
+                    }
+                    stopCamera();
+                    window.location.reload();
+                } catch (err) {
+                    console.error(err);
+                    showAlert("Error de conexión. Inténtalo de nuevo.", "danger");
+                    setUploading(false);
+                }
+            }
+
+            btnStartCamera.addEventListener("click", startCamera);
+            btnStopCamera.addEventListener("click", function () { stopCamera(); setStatus(""); });
+            btnCapture.addEventListener("click", capturePhoto);
+            btnRetake.addEventListener("click", retake);
+            btnAddPhoto.addEventListener("click", addPhoto);
+
+            window.addEventListener("beforeunload", stopCamera);
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                btnStartCamera.disabled = true;
+                setStatus("Tu navegador no soporta acceso a la cámara. Usa HTTPS o localhost.", true);
+            }
+        })();
+    </script>
+</body>
+
+</html>

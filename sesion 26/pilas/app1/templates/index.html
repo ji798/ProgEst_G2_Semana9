@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Visualizador interactivo de una pila LIFO.">
+  <title>Visualizador de pila</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-body-tertiary">
+  <nav class="navbar navbar-dark bg-primary">
+    <div class="container">
+      <span class="navbar-brand mb-0 h1">Visualizador de pila</span>
+      <span class="navbar-text text-white">Estructura LIFO</span>
+    </div>
+  </nav>
+
+  <main class="container py-4 py-lg-5">
+    <div class="row g-4">
+      <section class="col-12 col-lg-5" aria-labelledby="controls-title">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body p-4">
+            <h1 id="controls-title" class="h3">Control de la pila</h1>
+            <p class="text-secondary">Agrega elementos y observa cómo cambia la estructura. El último elemento agregado queda en la cima.</p>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+                  </div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <form action="{{ url_for('push') }}" method="post" class="mb-3" id="push-form">
+              <label for="value" class="form-label fw-semibold">Nuevo elemento</label>
+              <div class="input-group">
+                <input class="form-control" id="value" name="value" type="text"
+                       maxlength="100" placeholder="Ej. Libro, 25, Nodo A"
+                       aria-describedby="value-help" required>
+                <button class="btn btn-primary" type="submit">
+                  <span aria-hidden="true">＋</span> Apilar
+                </button>
+              </div>
+              <div id="value-help" class="form-text">Máximo 100 caracteres.</div>
+            </form>
+
+            <div class="d-grid gap-2">
+              <form action="{{ url_for('pop') }}" method="post">
+                <button class="btn btn-outline-danger w-100" type="submit" {% if not stack %}disabled{% endif %}>
+                  Retirar cima (Pop)
+                </button>
+              </form>
+              <form action="{{ url_for('peek') }}" method="post">
+                <button class="btn btn-outline-primary w-100" type="submit" {% if not stack %}disabled{% endif %}>
+                  Consultar cima (Peek)
+                </button>
+              </form>
+              <form action="{{ url_for('clear') }}" method="post" id="clear-form">
+                <button class="btn btn-outline-secondary w-100" type="submit" {% if not stack %}disabled{% endif %}>
+                  Vaciar pila
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-4">
+          <div class="card-body p-4">
+            <h2 class="h5">¿Cómo funciona?</h2>
+            <ul class="mb-0">
+              <li><strong>Apilar (Push):</strong> agrega un elemento en la cima.</li>
+              <li><strong>Retirar (Pop):</strong> elimina el elemento de la cima.</li>
+              <li><strong>Consultar (Peek):</strong> muestra la cima sin eliminarla.</li>
+              <li><strong>LIFO:</strong> el último en entrar es el primero en salir.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="col-12 col-lg-7" aria-labelledby="stack-title">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body p-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+              <div>
+                <h2 id="stack-title" class="h3 mb-1">Representación visual</h2>
+                <p class="text-secondary mb-0">La cima está arriba.</p>
+              </div>
+              <span class="badge text-bg-primary fs-6">{{ stack_size }} elemento{% if stack_size != 1 %}s{% endif %}</span>
+            </div>
+
+            <div class="alert alert-light border text-center mb-3" role="status">
+              {% if stack %}⬆ CIMA DE LA PILA ⬆{% else %}La pila está vacía{% endif %}
+            </div>
+
+            {% if stack %}
+              <ol class="list-group list-group-numbered mb-3" aria-label="Elementos de la pila, desde la cima hasta la base">
+                {% for item in stack|reverse %}
+                  <li class="list-group-item d-flex align-items-center justify-content-between gap-3">
+                    <span class="text-break">{{ item }}</span>
+                    {% if loop.first %}
+                      <span class="badge text-bg-success flex-shrink-0">Cima</span>
+                    {% elif loop.last %}
+                      <span class="badge text-bg-secondary flex-shrink-0">Base</span>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ol>
+              <p class="small text-secondary mb-0">La visualización se muestra desde la cima hasta la base. El orden interno conserva la base en el índice 0.</p>
+            {% else %}
+              <div class="border rounded-3 p-5 text-center bg-body">
+                <div class="display-4 mb-2" aria-hidden="true">▤</div>
+                <h3 class="h5">Todavía no hay elementos</h3>
+                <p class="text-secondary mb-0">Escribe un valor y pulsa <strong>Apilar</strong> para comenzar.</p>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="text-center text-secondary small mt-4">
+      Proyecto educativo · Flask + Bootstrap · Los datos se guardan en la sesión del navegador.
+    </footer>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const valueInput = document.getElementById("value");
+    const pushForm = document.getElementById("push-form");
+    const clearForm = document.getElementById("clear-form");
+
+    valueInput.focus();
+
+    pushForm.addEventListener("submit", function (event) {
+      if (!valueInput.value.trim()) {
+        event.preventDefault();
+        valueInput.value = "";
+        valueInput.focus();
+      }
+    });
+
+    clearForm.addEventListener("submit", function (event) {
+      if (!window.confirm("¿Seguro que deseas vaciar toda la pila?")) {
+        event.preventDefault();
+      }
+    });
+  </script>
+</body>
+</html>
